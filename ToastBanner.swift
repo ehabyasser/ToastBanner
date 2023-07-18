@@ -7,7 +7,8 @@
 
 import UIKit
 
-protocol BannerTheme {
+@available(iOS 13.0, *)
+public protocol BannerTheme {
     var icon : UIImage? {get}
     var backgorundColor:UIColor {get}
     var iconColor:UIColor {get}
@@ -18,27 +19,35 @@ protocol BannerTheme {
     var iconSize:CGFloat {get}
     var style:BannerStyle{ get set }
 }
-
-enum BannerStyle{
+@available(iOS 13.0, *)
+public enum BannerStyle{
     case error
     case warning
     case info
+    case success
 }
 
-
-enum BannerPosition{
+@available(iOS 13.0, *)
+public enum BannerPosition{
     case Top
     case Bottom
 }
 
-struct BannerSettings{
-    var theme:BannerTheme
+@available(iOS 13.0, *)
+public struct BannerSettings{
+    public var theme:BannerTheme
     var position:BannerPosition = .Bottom
+    
+    public init(theme: BannerTheme) {
+        self.theme = theme
+    }
 }
 
-class ToastBanner {
-    static let shared:ToastBanner = ToastBanner()
-    var settings:BannerSettings?
+@available(iOS 13.0, *)
+public class ToastBanner {
+    public static let shared:ToastBanner = ToastBanner()
+    public var settings:BannerSettings?
+    private var workItem: DispatchWorkItem?
     private let stack:UIStackView = {
         let stack = UIStackView()
         stack.axis = .horizontal
@@ -88,56 +97,89 @@ class ToastBanner {
     }()
     
     private var banner:UIView? = nil
-    func show(title:String = "" , message:String , style:BannerStyle , position:BannerPosition){
+    public func show(title:String = "" , message:String , style:BannerStyle , position:BannerPosition){
+        
         guard let window = getWindowView() else {return}
         if settings == nil {
-            settings = BannerSettings(theme: BannerStyleManager())
+            settings = BannerSettings(theme: DefaultBannerStyle())
         }
         settings?.position = position
         settings?.theme.style = style
         if banner != nil {
             banner?.removeFromSuperview()
         }
-        banner = design()
-        window.addSubview(banner!)
-        banner!.leadingAnchor.constraint(equalTo: window.leadingAnchor , constant: 20).isActive = true
-        banner!.trailingAnchor.constraint(equalTo: window.trailingAnchor , constant: -20).isActive = true
-        banner!.heightAnchor.constraint(equalToConstant: 90).isActive = true
-        if title.isEmpty {
-            titleLbl.isHidden = true
-        }
-        if message.isEmpty {
-            messageLbl.isHidden = true
-        }
-        switch settings?.position {
-        case .Bottom:
-            banner!.bottomAnchor.constraint(equalTo: window.bottomAnchor , constant: 90).isActive = true
-            break
-        case .Top:
-            banner!.topAnchor.constraint(equalTo: window.topAnchor , constant: -90).isActive = true
-            break
-        case .none:
-            break
-        }
-        UIView.animate(
-            withDuration: 0.5,
-            delay: 0.0,
-            usingSpringWithDamping: 0.7,
-            initialSpringVelocity: 1,
-            options: [],
-            animations: {
-                self.banner!.transform = CGAffineTransform(translationX: 0, y: self.settings!.position == .Bottom ?  self.banner!.frame.origin.y - 120 : self.banner!.frame.origin.y + 120)
-                let time = DispatchTimeInterval.seconds(self.settings?.theme.time ?? 3)
-                DispatchQueue.main.asyncAfter(deadline: .now() + time) {
-                    self.dismiss()
-                }
-            })
-        titleLbl.text = title
-        messageLbl.text = message
         
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.banner = self.design()
+            DispatchQueue.main.async {
+                window.addSubview(self.banner!)
+                self.banner!.leadingAnchor.constraint(equalTo: window.leadingAnchor , constant: 20).isActive = true
+                self.banner!.trailingAnchor.constraint(equalTo: window.trailingAnchor , constant: -20).isActive = true
+                self.banner!.heightAnchor.constraint(equalToConstant: 70).isActive = true
+                if title.isEmpty {
+                    self.titleLbl.isHidden = true
+                }
+                if message.isEmpty {
+                    self.messageLbl.isHidden = true
+                }
+                switch self.settings?.position {
+                case .Bottom:
+                    self.banner!.bottomAnchor.constraint(equalTo: window.bottomAnchor , constant: 120).isActive = true
+                    break
+                case .Top:
+                    self.banner!.topAnchor.constraint(equalTo: window.topAnchor , constant: -120).isActive = true
+                    break
+                case .none:
+                    break
+                }
+                let swipGes = UISwipeGestureRecognizer(target: self, action: #selector(self.bannerSwipeGes))
+                swipGes.direction = self.settings?.position == .Bottom ? .down : .up
+                self.banner?.addGestureRecognizer(swipGes)
+                let generator = UINotificationFeedbackGenerator()
+                switch style {
+                case .error:
+                    generator.notificationOccurred(.error)
+                    break
+                case .info:
+                    generator.notificationOccurred(.warning)
+                    break
+                case .warning:
+                    generator.notificationOccurred(.warning)
+                    break
+                case .success:
+                    generator.notificationOccurred(.success)
+                    break
+                }
+                    
+                let haptic =  UIImpactFeedbackGenerator(style: .medium)
+                haptic.impactOccurred()
+                UIView.animate(
+                    withDuration: 0.5,
+                    delay: 0.0,
+                    usingSpringWithDamping: 0.7,
+                    initialSpringVelocity: 1,
+                    options: [],
+                    animations: {
+                        self.banner!.transform = CGAffineTransform(translationX: 0, y: self.settings!.position == .Bottom ?  self.banner!.frame.origin.y - 190 : self.banner!.frame.origin.y + 190)
+                        
+                        self.workItem = DispatchWorkItem {
+                            self.dismiss()
+                        }
+                        let time = DispatchTimeInterval.seconds(self.settings?.theme.time ?? 3)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + time , execute: self.workItem!)
+                    })
+                self.titleLbl.text = title
+                self.messageLbl.text = message
+            }
+        }
     }
     
-    func dismiss(){
+    @objc private func bannerSwipeGes(){
+        self.dismiss()
+    }
+    
+    public func dismiss(){
+        workItem?.cancel()
         UIView.animate(
             withDuration: 0.5,
             delay: 0.0,
@@ -153,9 +195,11 @@ class ToastBanner {
     }
     
     fileprivate func getWindowView() -> UIView?{
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first?.rootViewController?.view {
-            return window
+        if var topController = UIApplication.shared.connectedScenes.flatMap({ ($0 as? UIWindowScene)?.windows ?? [] }).last(where: { $0.isKeyWindow })?.rootViewController {
+            while let presentedViewController = topController.presentedViewController {
+                topController = presentedViewController
+            }
+            return topController.view
         }
         return nil
     }
@@ -187,7 +231,7 @@ class ToastBanner {
         contentStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor , constant: -6).isActive = true
         contentStack.topAnchor.constraint(equalTo: contentView.topAnchor , constant: 6).isActive = true
         contentStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor , constant: -6).isActive = true
-       
+        
         contentStack.addArrangedSubview(titleLbl)
         contentStack.addArrangedSubview(messageLbl)
         titleLbl.heightAnchor.constraint(equalToConstant: 32).isActive = true
@@ -214,90 +258,5 @@ class ToastBanner {
     
 }
 
-extension UIView {
-    
-    func dropShadow() {
-        layer.masksToBounds = false
-        layer.shadowColor = UIColor.gray.cgColor
-        layer.shadowOpacity = 0.4
-        layer.shadowOffset = CGSize(width: 5, height: 5)
-        layer.shadowRadius = 5
-    }
-}
 
-class BannerStyleManager: BannerTheme {
-    var style: BannerStyle = .info
-    
-    var icon:UIImage?{
-        switch style {
-        case .error:
-            return UIImage(systemName: "wrongwaysign")
-        case .warning:
-            return UIImage(systemName: "exclamationmark.triangle")
-        case .info:
-            return UIImage(systemName: "info.circle")
-        }
-    }
-    
-    var color:UIColor{
-        switch style {
-        case .error:
-            return .white
-        case .warning:
-            return .white
-        case .info:
-            return .white
-        }
-    }
-    
-    var backgorundColor: UIColor {
-        switch style {
-        case .error:
-            return .systemRed
-        case .warning:
-            return .systemYellow
-        case .info:
-            return .label
-        }
-    }
-    
-    var iconColor: UIColor{
-        switch style {
-        case .error:
-            return .white
-        case .warning:
-            return .white
-        case .info:
-            return .systemBackground
-        }
-    }
-    
-    var textColor: UIColor{
-        switch style {
-        case .error:
-            return .white
-        case .warning:
-            return .white
-        case .info:
-            return .systemBackground
-        }
-    }
-    
-    var messageFont: UIFont{
-        switch style {
-        default :
-            return UIFont.boldSystemFont(ofSize: 16)
-        }
-    }
-    
-    var titleFont: UIFont{
-        switch style {
-        default :
-            return UIFont.systemFont(ofSize: 14, weight: .medium)
-        }
-    }
-    var time: Int = 3
-    
-    var iconSize: CGFloat = 32
-    
-}
+
